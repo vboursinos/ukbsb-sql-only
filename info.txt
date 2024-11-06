@@ -1,0 +1,13 @@
+table name: demo.tab_c_gt
+columns: col_s_s_1 BIGINT, col_se_s_1 BIGINT, col_s_t_d DATE, col_s_c_d_i CHAR(1), col_s_t_u_a NUMERIC
+
+table name: demo.tab_oab
+columns: col_o_i NUMERIC, col_s_1 BIGINT, col_m_p_i VARCHAR(50), col_s_s_dt DATE, col_s_cn_dt DATE
+
+table name: demo.tab_t_5_c_c_1
+columns: col_o_i NUMERIC, col_c_dig_11 NUMERIC, col_s_c_c NUMERIC
+
+table name: demo.tab_sbfa
+columnsL col_o_i FLOAT, col_s_1 BIGINT, col_m_p_i VARCHAR(50), col_s_s_dt DATE, col_s_cn_dt DATE
+
+
