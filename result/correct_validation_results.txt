@@ -1,2 +1,2 @@
-Total Rows: 218
+Total Rows: 7
 Total Columns: 40
