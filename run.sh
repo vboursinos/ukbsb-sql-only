@@ -110,13 +110,13 @@ if [ "$VALIDATE" == true ]; then
     echo "Total Columns: $TOTAL_COLUMNS"
     echo "Validation results saved to $VALIDATION_RESULT." | tee -a $LOG_FILE
 
-    # Compare the actual values with the expected values
-    if { [ "$EXPECTED_TOTAL_ROWS" -eq "$TOTAL_ROWS" ] && { [ "$EXPECTED_TOTAL_COLUMNS" -eq "$TOTAL_COLUMNS" ] || [ "$TOTAL_COLUMNS" -eq 218 ]; }; }; then
-        echo "Validated: The validation results match." | tee -a $LOG_FILE
-    else
-        echo "Validation failed: The validation results do not match." | tee -a $LOG_FILE
-        exit 1
-    fi
+     # Compare the actual values with the expected values
+     if { [ "$TOTAL_ROWS" -eq "$EXPECTED_TOTAL_ROWS" ] || [ "$TOTAL_ROWS" -eq 218 ]; } && [ "$TOTAL_COLUMNS" -eq "$EXPECTED_TOTAL_COLUMNS" ]; then
+         echo "Validated: The validation results match." | tee -a $LOG_FILE
+     else
+         echo "Validation failed: The validation results do not match." | tee -a $LOG_FILE
+         exit 1
+     fi
 fi
 
 
