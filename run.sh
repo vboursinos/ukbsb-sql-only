@@ -52,18 +52,16 @@ done
 
 # Execute SQL files if the execute flag is set
 if [ "$EXECUTE" == true ] || [ "$VALIDATE" == true ]; then
-    echo "Executing setup SQL files..." | tee -a $LOG_FILE
+    echo "Executing setup SQL files..."
     for SQL_FILE in "${SETUP_SQL_FILES[@]}"; do
-        echo "Executing SQL file: $SQL_FILE" | tee -a $LOG_FILE
-        # Execute the SQL file and capture both output and errors
-        sqlcmds -S "$SQLSERVER_HOST,$SQLSERVER_PORT" -U "$SQLSERVER_USER" -P "$SQLSERVER_PASSWORD" -d "$SQLSERVER_DB" -i "$SQL_FILE" >> "$LOG_FILE" 2>&1
+        echo "Executing SQL file: $SQL_FILE"
+        sqlcmd -S "$SQLSERVER_HOST,$SQLSERVER_PORT" -U "$SQLSERVER_USER" -P "$SQLSERVER_PASSWORD" -d "$SQLSERVER_DB" -i "$SQL_FILE"
 
-        # Check the status of the command
         if [ $? -ne 0 ]; then
-            echo "Error executing $SQL_FILE. Check $LOG_FILE for details." | tee -a $LOG_FILE
+            echo "Error executing $SQL_FILE. Exiting."
             exit 1
         else
-            echo "Successfully executed $SQL_FILE." | tee -a $LOG_FILE
+            echo "Successfully executed $SQL_FILE."
         fi
     done
 fi
