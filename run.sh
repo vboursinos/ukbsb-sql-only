@@ -3,6 +3,12 @@
 # Reset the SECONDS variable to track execution time
 SECONDS=0
 
+# Check if at least one argument is passed
+if [ "$#" -eq 0 ]; then
+    echo "Usage: $0 {execute} {validate} {clean}"
+    exit 1
+fi
+
 # Load environment variables from .env file
 export $(grep -v '^#' .env | xargs)
 
@@ -15,28 +21,121 @@ fi
 # Set the SQLCMD password parameter to avoid password prompts
 export SQLCMDPASSWORD=$SQLSERVER_PASSWORD
 
-# Create or clear the output log file
-LOG_FILE="output.log"
-> $LOG_FILE
+# Array of setup SQL files to execute
+SETUP_SQL_FILES=("sql/USR_REP_PaymentsData_modified.sql" "sql/dummydata2.sql" "sql/USR_REP_PromptPaymentsReport_All_modified.sql" "sql/USR_VW_PromptPaymentsReport_modified.sql" "sql/USR_Refill_REP_Schema_PromptPay_ToOptimise_modified.sql" "sql/execute_sp.sql")
 
-# Run the SQL files and redirect output to the log file
-{
-    echo "Running SQL files..."
-    sqlcmd -S $SQLSERVER_HOST,$SQLSERVER_PORT -U $SQLSERVER_USER -P $SQLSERVER_PASSWORD -d $SQLSERVER_DB -i sql/USR_REP_PaymentsData_modified.sql
-    sqlcmd -S $SQLSERVER_HOST,$SQLSERVER_PORT -U $SQLSERVER_USER -P $SQLSERVER_PASSWORD -d $SQLSERVER_DB -i sql/dummydata2.sql
-    sqlcmd -S $SQLSERVER_HOST,$SQLSERVER_PORT -U $SQLSERVER_USER -P $SQLSERVER_PASSWORD -d $SQLSERVER_DB -i sql/USR_REP_PromptPaymentsReport_All_modified.sql
-    sqlcmd -S $SQLSERVER_HOST,$SQLSERVER_PORT -U $SQLSERVER_USER -P $SQLSERVER_PASSWORD -d $SQLSERVER_DB -i sql/USR_VW_PromptPaymentsReport_modified.sql
-    sqlcmd -S $SQLSERVER_HOST,$SQLSERVER_PORT -U $SQLSERVER_USER -P $SQLSERVER_PASSWORD -d $SQLSERVER_DB -i sql/USR_Refill_REP_Schema_PromptPay_ToOptimise_modified.sql
-    sqlcmd -S $SQLSERVER_HOST,$SQLSERVER_PORT -U $SQLSERVER_USER -P $SQLSERVER_PASSWORD -d $SQLSERVER_DB -i sql/execute_sp.sql
+# Flag variables to track the selected modes
+EXECUTE=false
+VALIDATE=false
+CLEAN=false
 
-} 2>&1 | tee -a $LOG_FILE
+# Parse flags
+for arg in "$@"; do
+    case $arg in
+        execute)
+            EXECUTE=true
+            ;;
+        validate)
+            VALIDATE=true
+            ;;
+        clean)
+            CLEAN=true
+            ;;
+        *)
+            echo "Invalid argument: $arg"
+            echo "Usage: $0 {execute} {validate} {clean}"
+            exit 1
+            ;;
+    esac
+done
 
-# Check if the SQL files executed successfully
-if [ ${PIPESTATUS[0]} -eq 0 ]; then
-    echo "SQL files executed successfully. Check output.log for details." | tee -a $LOG_FILE
-else
-    echo "Error executing SQL files. Check output.log for details." | tee -a $LOG_FILE
-    exit 1
+# Execute SQL files if the execute flag is set
+if [ "$EXECUTE" == true ] || [ "$VALIDATE" == true ]; then
+    echo "Executing setup SQL files..." | tee -a $LOG_FILE
+    for SQL_FILE in "${SETUP_SQL_FILES[@]}"; do
+        echo "Executing SQL file: $SQL_FILE" | tee -a $LOG_FILE
+        sqlcmd -S "$SQLSERVER_HOST,$SQLSERVER_PORT" -U "$SQLSERVER_USER" -P "$SQLSERVER_PASSWORD" -d "$SQLSERVER_DB" -i "$SQL_FILE" > /dev/null 2>&1
+
+        if [ $? -ne 0 ]; then
+            echo "Error executing $SQL_FILE. Exiting." | tee -a $LOG_FILE
+            exit 1
+        else
+            echo "Successfully executed $SQL_FILE." | tee -a $LOG_FILE
+        fi
+    done
+fi
+
+# If the mode is 'validate', execute and validate the stored procedure output
+if [ "$VALIDATE" == true ]; then
+    # Run the stored procedure and capture the output
+    FINAL_LOG="final_output.log"
+    echo "Executing stored procedure and capturing output..." | tee -a $LOG_FILE
+    sqlcmd -S "$SQLSERVER_HOST,$SQLSERVER_PORT" -U "$SQLSERVER_USER" -P "$SQLSERVER_PASSWORD" -d "$SQLSERVER_DB" -Q "
+    USE StagingFinance;
+    EXEC dbo.USR_Refill_REP_Schema_PromptPay_ToOptimise;
+    SELECT * FROM dbo.USR_REP_PromptPaymentsReport_All;
+    " > "$FINAL_LOG" 2>&1
+
+    if [ $? -eq 0 ]; then
+        echo "Stored procedure executed. Results saved to $FINAL_LOG." | tee -a $LOG_FILE
+    else
+        echo "Error executing stored procedure. Check $FINAL_LOG for details." | tee -a $LOG_FILE
+        exit 1
+    fi
+
+    # Extract and filter the first 12 lines of the final output, excluding lines 2 and 3
+    REFERENCE_FILE="result/USR_REP_PromptPaymentsReport_All.log"
+    HEAD_FINAL_LOG="final_output_head.log"
+    HEAD_REFERENCE_LOG="reference_head.log"
+
+    # Extract first 12 lines and remove lines 2 and 3, leaving 10 lines
+    head -n 12 "$FINAL_LOG" | sed '2,3d' > "$HEAD_FINAL_LOG"
+    head -n 10 "$REFERENCE_FILE" > "$HEAD_REFERENCE_LOG"
+
+    # Compare the filtered 10 lines
+    if diff -q "$HEAD_FINAL_LOG" "$HEAD_REFERENCE_LOG" > /dev/null; then
+        echo "Validated: The stored procedure output (excluding lines 2 and 3) matches the reference file." | tee -a $LOG_FILE
+    else
+        echo "Validation failed: The stored procedure output (excluding lines 2 and 3) does not match the reference file." | tee -a $LOG_FILE
+        exit 1
+    fi
+fi
+
+# If the mode is 'clean', drop all tables, stored procedures, views, and functions in the dbo schema
+if [ "$CLEAN" == true ]; then
+    echo "Dropping all tables, views, stored procedures, and functions in the dbo schema..." | tee -a $LOG_FILE
+
+    # Generate the SQL command to drop all tables, views, stored procedures, and functions in the dbo schema
+    DROP_SQL=$(sqlcmd -S "$SQLSERVER_HOST,$SQLSERVER_PORT" -U "$SQLSERVER_USER" -P "$SQLSERVER_PASSWORD" -d "$SQLSERVER_DB" -Q "
+    DECLARE @sql NVARCHAR(MAX) = N'';
+    -- Drop tables in dbo schema
+    SELECT @sql += 'DROP TABLE dbo.' + TABLE_NAME + ';' + CHAR(13)
+    FROM INFORMATION_SCHEMA.TABLES
+    WHERE TABLE_SCHEMA = 'dbo';
+    -- Drop views in dbo schema
+    SELECT @sql += 'DROP VIEW dbo.' + TABLE_NAME + ';' + CHAR(13)
+    FROM INFORMATION_SCHEMA.VIEWS
+    WHERE TABLE_SCHEMA = 'dbo';
+    -- Drop stored procedures in dbo schema
+    SELECT @sql += 'DROP PROCEDURE dbo.' + SPECIFIC_NAME + ';' + CHAR(13)
+    FROM INFORMATION_SCHEMA.ROUTINES
+    WHERE ROUTINE_SCHEMA = 'dbo' AND ROUTINE_TYPE = 'PROCEDURE';
+    -- Drop functions in dbo schema
+    SELECT @sql += 'DROP FUNCTION dbo.' + SPECIFIC_NAME + ';' + CHAR(13)
+    FROM INFORMATION_SCHEMA.ROUTINES
+    WHERE ROUTINE_SCHEMA = 'dbo' AND ROUTINE_TYPE = 'FUNCTION';
+    EXEC sp_executesql @sql;
+    ")
+
+    # Execute the generated SQL to drop all dbo tables, views, stored procedures, and functions
+    sqlcmd -S "$SQLSERVER_HOST,$SQLSERVER_PORT" -U "$SQLSERVER_USER" -P "$SQLSERVER_PASSWORD" -d "$SQLSERVER_DB" -Q "$DROP_SQL" > /dev/null 2>&1
+
+    if [ $? -eq 0 ]; then
+        echo "All tables, views, stored procedures, and functions in the dbo schema dropped successfully." | tee -a $LOG_FILE
+    else
+        echo "Error dropping objects in the dbo schema." | tee -a $LOG_FILE
+        exit 1
+    fi
 fi
 
 # Print total execution time
