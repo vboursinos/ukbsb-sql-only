@@ -1,7 +1,23 @@
-## Run script command
+## Run script command for query execution
 ```
-bash ./run.sh
+bash ./run.sh execute
 ```
+
+## Run script command for query result validation
+```
+bash ./run.sh validate
+```
+
+## Run script command for query execution and clean up
+```
+bash ./run.sh execute clean
+```
+
+## Run script command for query result validation and clean up
+```
+bash ./run.sh validate clean
+```
+
 
 
 Steps to Install sqlcmd on Ubuntu (20.04 or later)
