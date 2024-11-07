@@ -2,6 +2,7 @@
 
 # Reset the SECONDS variable to track execution time
 SECONDS=0
+LOG_FILE="execution_log.txt"  # You can also set an absolute path like /var/logs/execution_log.txt
 
 # Check if at least one argument is passed
 if [ "$#" -eq 0 ]; then
@@ -54,10 +55,12 @@ if [ "$EXECUTE" == true ] || [ "$VALIDATE" == true ]; then
     echo "Executing setup SQL files..." | tee -a $LOG_FILE
     for SQL_FILE in "${SETUP_SQL_FILES[@]}"; do
         echo "Executing SQL file: $SQL_FILE" | tee -a $LOG_FILE
-        sqlcmd -S "$SQLSERVER_HOST,$SQLSERVER_PORT" -U "$SQLSERVER_USER" -P "$SQLSERVER_PASSWORD" -d "$SQLSERVER_DB" -i "$SQL_FILE" > /dev/null 2>&1
+        # Execute the SQL file and capture both output and errors
+        sqlcmds -S "$SQLSERVER_HOST,$SQLSERVER_PORT" -U "$SQLSERVER_USER" -P "$SQLSERVER_PASSWORD" -d "$SQLSERVER_DB" -i "$SQL_FILE" >> "$LOG_FILE" 2>&1
 
+        # Check the status of the command
         if [ $? -ne 0 ]; then
-            echo "Error executing $SQL_FILE. Exiting." | tee -a $LOG_FILE
+            echo "Error executing $SQL_FILE. Check $LOG_FILE for details." | tee -a $LOG_FILE
             exit 1
         else
             echo "Successfully executed $SQL_FILE." | tee -a $LOG_FILE

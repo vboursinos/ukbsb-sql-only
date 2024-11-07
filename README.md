@@ -45,8 +45,9 @@ Now that the repository is added, you can install the SQL Server command-line to
 Update the apt package list:
 ```
 sudo apt-get update
-Install mssql-tools:
 ```
+
+Install mssql-tools:
 
 ```
 sudo apt-get install mssql-tools unixodbc-dev
