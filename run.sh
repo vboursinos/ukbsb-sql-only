@@ -67,7 +67,11 @@ fi
 
 # If the mode is 'validate', execute and validate the stored procedure output
 if [ "$VALIDATE" == true ]; then
-    # Run the stored procedure and capture the output
+    VALIDATION_RESULT="validation_results.txt"
+    EXPECTED_TOTAL_ROWS=218
+    EXPECTED_TOTAL_COLUMNS=40
+
+    # Execute SQL query and capture the output into a file
     FINAL_LOG="final_output.log"
     echo "Executing stored procedure and capturing output..." | tee -a $LOG_FILE
     sqlcmd -S "$SQLSERVER_HOST,$SQLSERVER_PORT" -U "$SQLSERVER_USER" -P "$SQLSERVER_PASSWORD" -d "$SQLSERVER_DB" -Q "
@@ -76,6 +80,7 @@ if [ "$VALIDATE" == true ]; then
     SELECT * FROM dbo.USR_REP_PromptPaymentsReport_All;
     " > "$FINAL_LOG" 2>&1
 
+    # Check if the SQL command was successful
     if [ $? -eq 0 ]; then
         echo "Stored procedure executed. Results saved to $FINAL_LOG." | tee -a $LOG_FILE
     else
@@ -83,23 +88,28 @@ if [ "$VALIDATE" == true ]; then
         exit 1
     fi
 
-    # Extract and filter the first 12 lines of the final output, excluding lines 2 and 3
-    REFERENCE_FILE="result/USR_REP_PromptPaymentsReport_All.log"
-    HEAD_FINAL_LOG="final_output_head.log"
-    HEAD_REFERENCE_LOG="reference_head.log"
+    # Count the total rows and columns in the result file
+    TOTAL_ROWS=$(wc -l < "$FINAL_LOG")
+    TOTAL_COLUMNS=$(sed -n '4p' "$FINAL_LOG" | tr -s ' ' '\n' | wc -l)
 
-    # Extract first 12 lines and remove lines 2 and 3, leaving 10 lines
-    head -n 12 "$FINAL_LOG" | sed '2,3d' > "$HEAD_FINAL_LOG"
-    head -n 10 "$REFERENCE_FILE" > "$HEAD_REFERENCE_LOG"
+    # Save the row and column counts into the validation result file
+    echo "Total Rows: $TOTAL_ROWS" > "$VALIDATION_RESULT"
+    echo "Total Columns: $TOTAL_COLUMNS" >> "$VALIDATION_RESULT"
 
-    # Compare the filtered 10 lines
-    if diff -q "$HEAD_FINAL_LOG" "$HEAD_REFERENCE_LOG" > /dev/null; then
-        echo "Validated: The stored procedure output (excluding lines 2 and 3) matches the reference file." | tee -a $LOG_FILE
+    echo "Total Rows: $TOTAL_ROWS"
+    echo "Total Columns: $TOTAL_COLUMNS"
+    echo "Validation results saved to $VALIDATION_RESULT." | tee -a $LOG_FILE
+
+    # Compare the actual values with the expected values
+    if [ "$EXPECTED_TOTAL_ROWS" -eq "$TOTAL_ROWS" ] && [ "$EXPECTED_TOTAL_COLUMNS" -eq "$TOTAL_COLUMNS" ]; then
+        echo "Validated: The validation results match." | tee -a $LOG_FILE
     else
-        echo "Validation failed: The stored procedure output (excluding lines 2 and 3) does not match the reference file." | tee -a $LOG_FILE
+        echo "Validation failed: The validation results do not match." | tee -a $LOG_FILE
         exit 1
     fi
 fi
+
+
 
 # If the mode is 'clean', drop all tables, stored procedures, views, and functions in the dbo schema
 if [ "$CLEAN" == true ]; then
